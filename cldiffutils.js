@@ -75,7 +75,7 @@
 
 		contentChanges = contentChanges ? contentChanges.slice() : [];
 		isBackward && contentChanges.reverse();
-		contentChanges.cl_each(function(chars, contentChange) {
+		contentChanges.cl_each(function(contentChange) {
 			function getValue(change) {
 				return !change.d ^ isBackward ? [contentChange.userId, change.a || change.d || ''] : undefined;
 			}
@@ -148,7 +148,7 @@
 	}
 
 	function flattenContent(content, doChars) {
-		return {
+		return ({}).cl_extend(content).cl_extend({
 			text: content.text.cl_map(function(item) {
 				return item[1];
 			}).join(''),
@@ -161,7 +161,7 @@
 			discussions: flattenObject(content.discussions),
 			comments: flattenObject(content.comments),
 			conflicts: flattenObject(content.conflicts),
-		};
+		});
 	}
 
 	function applyFlattenedObjectPatches(obj, patches) {
@@ -187,7 +187,7 @@
 	}
 
 	function applyCharPatches(chars, patches, userId) {
-		return patches.cl_each(function(chars, patch) {
+		return patches.cl_reduce(function(chars, patch) {
 			if (patch.a) {
 				return chars.slice(0, patch.o).concat(patch.a.split('').cl_map(function(c) {
 					return [userId, c];
@@ -209,7 +209,7 @@
 		var text = content.text;
 		var chars = doChars && content.chars.slice();
 		contentChanges = contentChanges ? contentChanges : [];
-		contentChanges.cl_each(function(chars, contentChange) {
+		contentChanges.cl_each(function(contentChange) {
 			properties = applyFlattenedObjectPatches(properties, contentChange.properties || []);
 			discussions = applyFlattenedObjectPatches(discussions, contentChange.discussions || []);
 			comments = applyFlattenedObjectPatches(comments, contentChange.comments || []);
@@ -258,7 +258,7 @@
 					break;
 			}
 		});
-		return patches.length && patches;
+		return patches.length ? patches : undefined;
 	}
 
 	function getObjectPatches(oldObject, newObjects) {
@@ -283,7 +283,7 @@
 				patches.push(patch);
 			});
 		});
-		return patches.length && patches;
+		return patches.length ? patches : undefined;
 	}
 
 	function hashArray(arr, valueHash, valueArray) {
