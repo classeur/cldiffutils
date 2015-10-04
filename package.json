@@ -1,0 +1,22 @@
+{
+  "name": "cldiffutils",
+  "version": "0.1.0",
+  "description": "",
+  "main": "cldiffutils.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/classeur/cldiffutils.git"
+  },
+  "author": "Benoit Schweblin",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/classeur/cldiffutils/issues"
+  },
+  "homepage": "https://github.com/classeur/cldiffutils#readme",
+  "dependencies": {
+    "clunderscore": "^0.1.0"
+  }
+}
