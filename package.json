@@ -1,6 +1,6 @@
 {
   "name": "cldiffutils",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "",
   "main": "cldiffutils.js",
   "scripts": {
@@ -17,7 +17,8 @@
   },
   "homepage": "https://github.com/classeur/cldiffutils#readme",
   "dependencies": {
-    "clunderscore": "^0.1.0"
+    "clunderscore": "^0.1.0",
+    "googlediff": "^0.1.0"
   },
   "devDependencies": {
     "gulp": "^3.9.0",
