@@ -80,16 +80,16 @@
 				return !change.d ^ isBackward ? [contentChange.userId, change.a || change.d || ''] : undefined;
 			}
 
-			contentChange.properties.cl_each(function(change) {
+			contentChange.properties && contentChange.properties.cl_each(function(change) {
 				properties[change.k] = getValue(change);
 			});
-			contentChange.discussions.cl_each(function(change) {
+			contentChange.discussions && contentChange.discussions.cl_each(function(change) {
 				discussions[change.k] = getValue(change);
 			});
-			contentChange.comments.cl_each(function(change) {
+			contentChange.comments && contentChange.comments.cl_each(function(change) {
 				comments[change.k] = getValue(change);
 			});
-			contentChange.conflicts.cl_each(function(change) {
+			contentChange.conflicts && contentChange.conflicts.cl_each(function(change) {
 				conflicts[change.k] = getValue(change);
 			});
 			var text = (contentChange.text || []).slice();
