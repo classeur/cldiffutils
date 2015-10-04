@@ -57,90 +57,6 @@
 		}], text)[0].indexOf(marker);
 	}
 
-	function applyContentChanges(content, contentChanges, isBackward) {
-		var chars = content.text.cl_reduce(function(chars, item) {
-			return chars.concat(item[1].split('').map(function(c) {
-				return [item[0], c];
-			}));
-		}, []);
-		var properties = ({}).cl_extend(content.properties);
-		var discussions = ({}).cl_extend(content.discussions);
-		var comments = ({}).cl_extend(content.comments);
-		var conflicts = ({}).cl_extend(content.conflicts);
-		var contributions = ({}).cl_extend(content.contributions);
-		var changeGroup = {
-			fromRev: content.rev,
-			userIds: {}
-		};
-
-		contentChanges = contentChanges ? contentChanges.slice() : [];
-		isBackward && contentChanges.reverse();
-		contentChanges.cl_each(function(contentChange) {
-			function getValue(change) {
-				return !change.d ^ isBackward ? [contentChange.userId, change.a || change.d || ''] : undefined;
-			}
-
-			contentChange.properties && contentChange.properties.cl_each(function(change) {
-				properties[change.k] = getValue(change);
-			});
-			contentChange.discussions && contentChange.discussions.cl_each(function(change) {
-				discussions[change.k] = getValue(change);
-			});
-			contentChange.comments && contentChange.comments.cl_each(function(change) {
-				comments[change.k] = getValue(change);
-			});
-			contentChange.conflicts && contentChange.conflicts.cl_each(function(change) {
-				conflicts[change.k] = getValue(change);
-			});
-			var text = (contentChange.text || []).slice();
-			isBackward && text.reverse();
-			var contribution = contributions[contentChange.userId] || [0, 0];
-			changeGroup.created = contentChange.created;
-			changeGroup.toRev = contentChange.rev;
-			changeGroup.userIds[contentChange.userId] = true;
-			chars = text.cl_reduce(function(chars, change) {
-				var charDiff = (change.a || change.d || '').split('').map(function(c) {
-					return [contentChange.userId, c];
-				});
-				contribution[0] += change.a ? change.a.length : 0;
-				contribution[1] += change.d ? change.d.length : 0;
-				return !change.d ^ isBackward ?
-					chars.slice(0, change.o).concat(charDiff).concat(chars.slice(change.o)) :
-					chars.slice(0, change.o).concat(chars.slice(change.o + charDiff.length));
-			}, chars);
-			contributions[contentChange.userId] = contribution;
-		});
-
-		var charGroup = chars.shift();
-		var text = chars.cl_reduce(function(text, item) {
-			if (item[0] !== charGroup[0]) {
-				text.push(charGroup);
-				charGroup = item;
-			} else {
-				charGroup[1] += item[1];
-			}
-			return text;
-		}, []);
-		charGroup && text.push(charGroup);
-
-		changeGroup.userIds = Object.keys(changeGroup.userIds).slice(0, 10);
-		var changeGroups = (content.changeGroups || []).slice();
-		contentChanges.length && changeGroups.push(changeGroup);
-
-		return {
-			created: !content.created && contentChanges.length ? contentChanges[0].created : content.created,
-			updated: !isBackward && contentChanges.length ? contentChanges[contentChanges.length - 1].created : content.updated,
-			text: text,
-			properties: properties,
-			discussions: discussions,
-			comments: comments,
-			conflicts: conflicts,
-			contributions: isBackward ? undefined : contributions,
-			changeGroups: isBackward ? undefined : changeGroups,
-			rev: content.rev + (isBackward ? -contentChanges.length : contentChanges.length)
-		};
-	}
-
 	function flattenObject(obj) {
 		return obj.cl_reduce(function(result, value, key) {
 			return (result[key] = value[1]), result;
@@ -208,7 +124,7 @@
 		var conflicts = ({}).cl_extend(content.conflicts);
 		var text = content.text;
 		var chars = doChars && content.chars.slice();
-		contentChanges = contentChanges ? contentChanges : [];
+		contentChanges = contentChanges || [];
 		contentChanges.cl_each(function(contentChange) {
 			properties = applyFlattenedObjectPatches(properties, contentChange.properties || []);
 			discussions = applyFlattenedObjectPatches(discussions, contentChange.discussions || []);
@@ -438,7 +354,6 @@
 
 	clDiffUtils.offsetToPatch = offsetToPatch;
 	clDiffUtils.patchToOffset = patchToOffset;
-	clDiffUtils.applyContentChanges = applyContentChanges;
 	clDiffUtils.flattenContent = flattenContent;
 	clDiffUtils.applyFlattenedObjectPatches = applyFlattenedObjectPatches;
 	clDiffUtils.applyCharPatches = applyCharPatches;
