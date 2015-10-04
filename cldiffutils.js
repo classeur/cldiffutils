@@ -81,13 +81,15 @@
 	}
 
 	function applyFlattenedObjectPatches(obj, patches) {
-		patches.cl_each(function(patch) {
-			if (patch.a) {
-				obj[patch.k] = patch.a;
-			} else if (patch.d) {
-				delete obj[patch.k];
-			}
-		});
+		if (patches) {
+			patches.cl_each(function(patch) {
+				if (patch.a) {
+					obj[patch.k] = patch.a;
+				} else if (patch.d) {
+					delete obj[patch.k];
+				}
+			});
+		}
 	}
 
 	function applyFlattenedTextPatches(text, patches) {
@@ -126,10 +128,10 @@
 		var chars = doChars && content.chars.slice();
 		contentChanges = contentChanges || [];
 		contentChanges.cl_each(function(contentChange) {
-			properties = applyFlattenedObjectPatches(properties, contentChange.properties || []);
-			discussions = applyFlattenedObjectPatches(discussions, contentChange.discussions || []);
-			comments = applyFlattenedObjectPatches(comments, contentChange.comments || []);
-			conflicts = applyFlattenedObjectPatches(conflicts, contentChange.conflicts || []);
+			applyFlattenedObjectPatches(properties, contentChange.properties);
+			applyFlattenedObjectPatches(discussions, contentChange.discussions);
+			applyFlattenedObjectPatches(comments, contentChange.comments);
+			applyFlattenedObjectPatches(conflicts, contentChange.conflicts);
 			text = applyFlattenedTextPatches(text, contentChange.text);
 			if (doChars) {
 				userId = contentChange.userId || userId;
@@ -202,15 +204,19 @@
 		return patches.length ? patches : undefined;
 	}
 
+	function serializeObject(obj) {
+		return JSON.stringify(obj, function(key, value) {
+			return Object.prototype.toString.call(value) === '[object Object]' ?
+				Object.keys(value).sort().cl_reduce(function(sorted, key) {
+					return sorted[key] = value[key], sorted;
+				}, {}) : value;
+		});
+	}
+
 	function hashArray(arr, valueHash, valueArray) {
 		var hash = [];
 		arr.cl_each(function(obj) {
-			var serializedObj = JSON.stringify(obj, function(key, value) {
-				return Object.prototype.toString.call(value) === '[object Object]' ?
-					Object.keys(value).sort().cl_reduce(function(sorted, key) {
-						return sorted[key] = value[key], sorted;
-					}, {}) : value;
-			});
+			var serializedObj = serializeObject(obj);
 			var objHash = valueHash[serializedObj];
 			if (objHash === undefined) {
 				objHash = valueArray.length;
@@ -232,14 +238,6 @@
 		return hash.split('').cl_map(function(objHash) {
 			return valueArray[objHash.charCodeAt(0)];
 		});
-	}
-
-	function unhashObject(hash, valueArray) {
-		var result = {};
-		unhashArray(hash, valueArray).cl_each(function(value) {
-			result[value[0]] = value[1];
-		});
-		return result;
 	}
 
 	function mergeText(oldText, newText, serverText) {
@@ -312,21 +310,39 @@
 	}
 
 	function mergeObjects(oldObject, newObject, serverObject) {
-		var valueHash = Object.create(null),
-			valueArray = [];
-		var newObjectHash = hashObject(newObject, valueHash, valueArray);
-		var oldObjectHash = hashObject(oldObject, valueHash, valueArray);
-		var serverObjectHash = hashObject(serverObject, valueHash, valueArray);
-		var isServerObjectChanges = oldObjectHash !== serverObjectHash;
-		var isLocalObjectChanges = oldObjectHash !== newObjectHash;
-		var isObjectSynchronized = serverObjectHash === newObjectHash;
-		if (!isObjectSynchronized && isServerObjectChanges) {
-			return unhashObject(
-				isLocalObjectChanges ? quickPatch(oldObjectHash, newObjectHash, serverObjectHash) : serverObjectHash,
-				valueArray
-			);
-		}
-		return newObject;
+		var mergedObject = ({}).cl_extend(newObject).cl_extend(serverObject);
+		mergedObject.cl_each(function(value, key) {
+			if (!oldObject[key]) {
+				return; // There might be conflict, keep the server value
+			}
+			var newValue = newObject[key] && serializeObject(newObject[key]);
+			var serverValue = serverObject[key] && serializeObject(serverObject[key]);
+			if (newValue === serverValue) {
+				return; // no conflict
+			}
+			var oldValue = serializeObject(oldObject[key]);
+			if (oldValue !== newValue && !serverValue) {
+				return; // Removed on server but changed on client
+			}
+			if (oldValue !== serverValue && !newValue) {
+				return; // Removed on client but changed on server
+			}
+			if (oldValue !== newValue && oldValue === serverValue) {
+				// Take the client value
+				if(!newValue) {
+					delete mergedObject[key];
+				} else {
+					mergedObject[key] = newObject[key];
+				}
+			} else if (oldValue !== serverValue && oldValue === newValue) {
+				// Take the server value
+				if(!serverValue) {
+					delete mergedObject[key];
+				}
+			}
+			// Take the server value otherwise
+		});
+		return mergedObject;
 	}
 
 	function mergeContent(oldContent, newContent, serverContent) {
