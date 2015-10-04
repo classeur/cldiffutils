@@ -1,7 +1,7 @@
 (function(root, factory) {
 	if (typeof exports === 'object') {
 		require('clunderscore');
-		module.exports = factory(require('diff_match_patch'));
+		module.exports = factory(require('googlediff'));
 	} else {
 		root.clDiffUtils = factory(root.diff_match_patch);
 	}
