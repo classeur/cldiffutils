@@ -370,6 +370,7 @@
 
 	clDiffUtils.offsetToPatch = offsetToPatch;
 	clDiffUtils.patchToOffset = patchToOffset;
+	clDiffUtils.serializeObject = serializeObject;
 	clDiffUtils.flattenContent = flattenContent;
 	clDiffUtils.applyFlattenedObjectPatches = applyFlattenedObjectPatches;
 	clDiffUtils.applyCharPatches = applyCharPatches;
