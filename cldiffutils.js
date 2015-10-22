@@ -93,7 +93,7 @@
 	}
 
 	function applyFlattenedTextPatches(text, patches) {
-		return patches.cl_reduce(function(text, patch) {
+		return (patches || []).cl_reduce(function(text, patch) {
 			if (patch.a) {
 				return text.slice(0, patch.o).concat(patch.a).concat(text.slice(patch.o));
 			} else if (patch.d) {

@@ -1,6 +1,6 @@
 {
   "name": "cldiffutils",
-  "version": "0.1.7",
+  "version": "1.0.0",
   "description": "",
   "main": "cldiffutils.js",
   "scripts": {
@@ -21,8 +21,7 @@
     "googlediff": "^0.1.0"
   },
   "devDependencies": {
-    "gulp": "^3.9.0",
-    "gulp-bump": "^1.0.0",
-    "gulp-util": "^3.0.6"
+    "clgulp": "^1.0.4",
+    "gulp": "^3.9.0"
   }
 }
