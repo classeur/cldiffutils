@@ -105,7 +105,7 @@
 	}
 
 	function applyCharPatches(chars, patches, userId) {
-		return patches.cl_reduce(function(chars, patch) {
+		return (patches || []).cl_reduce(function(chars, patch) {
 			if (patch.a) {
 				return chars.slice(0, patch.o).concat(patch.a.split('').cl_map(function(c) {
 					return [userId, c];
@@ -135,7 +135,7 @@
 			text = applyFlattenedTextPatches(text, contentChange.text);
 			if (doChars) {
 				userId = contentChange.userId || userId;
-				chars = applyCharPatches(chars, contentChange.text || [], userId);
+				chars = applyCharPatches(chars, contentChange.text, userId);
 			}
 		});
 		return {
