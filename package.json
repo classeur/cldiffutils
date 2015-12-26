@@ -22,7 +22,6 @@
   },
   "devDependencies": {
     "clgulp": "^1.0.4",
-    "eslint-config-classeur": "^1.0.1",
     "gulp": "^3.9.0"
   }
 }
