@@ -93,7 +93,7 @@
   }
 
   function applyFlattenedObjectPatchesReverse (obj, patches) {
-    patches && patches.cl_each(function (patch) {
+    patches && patches.slice().reverse().cl_each(function (patch) {
       if (patch.d) {
         obj[patch.k] = patch.d
       } else if (patch.a) {
@@ -115,7 +115,7 @@
   }
 
   function applyFlattenedTextPatchesReverse (text, patches) {
-    return (patches || []).cl_reduce(function (text, patch) {
+    return (patches || []).slice().reverse().cl_reduce(function (text, patch) {
       if (patch.d) {
         return text.slice(0, patch.o).concat(patch.d).concat(text.slice(patch.o))
       } else if (patch.a) {
