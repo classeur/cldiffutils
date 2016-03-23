@@ -300,7 +300,7 @@
     var valueHash = Object.create(null)
     var valueArray = []
     var diffs = diffMatchPatch.diff_main(oldText, newText)
-    diffMatchPatch.diff_cleanupSemantic(oldText, newText)
+    diffMatchPatch.diff_cleanupSemantic(diffs)
     var patches = diffMatchPatch.patch_make(oldText, diffs)
     var patchResult = diffMatchPatch.patch_apply(patches, serverText)
     if (!patchResult[1]
