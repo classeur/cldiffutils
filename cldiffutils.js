@@ -258,6 +258,38 @@
     }), valueHash, valueArray)
   }
 
+  function hashText (text, valueHash, valueArray) {
+    var hash = []
+    var startIndex = 0
+    function addWord (endIndex) {
+      var word = text.slice(startIndex, endIndex)
+      var wordHash = valueHash[word]
+      if (wordHash === undefined) {
+        wordHash = valueArray.length
+        valueArray.push(word)
+        valueHash[word] = wordHash
+      }
+      hash.push(wordHash)
+    }
+
+    var lastCharSpace
+    var textLen = text.length
+    for (var i = 0; i < textLen; i++) {
+      var charCode = text.charCodeAt(i)
+      if (charCode === 0x20 /* space */ || charCode === 0x09 /* \t */ || charCode === 0x0a /* \n */) {
+        lastCharSpace = true
+      } else if (lastCharSpace) {
+        addWord(i)
+        startIndex = i
+        lastCharSpace = false
+      }
+    }
+    if (i > 0) {
+      addWord(i)
+    }
+    return String.fromCharCode.apply(null, hash)
+  }
+
   function unhashArray (hash, valueArray) {
     return hash.split('').cl_map(function (objHash) {
       return valueArray[objHash.charCodeAt(0)]
@@ -267,23 +299,24 @@
   function mergeText (oldText, newText, serverText) {
     var valueHash = Object.create(null)
     var valueArray = []
-    var oldHash = hashArray(oldText.split('\n'), valueHash, valueArray)
-    var newHash = hashArray(serverText.split('\n'), valueHash, valueArray)
-    var serverHash = hashArray(newText.split('\n'), valueHash, valueArray)
-    var diffs = diffMatchPatchStrict.diff_main(oldHash, newHash)
-    var patches = diffMatchPatchStrict.patch_make(oldHash, diffs)
-    var patchResult = diffMatchPatchStrict.patch_apply(patches, serverHash)
+    var diffs = diffMatchPatch.diff_main(oldText, newText)
+    diffMatchPatch.diff_cleanupSemantic(oldText, newText)
+    var patches = diffMatchPatch.patch_make(oldText, diffs)
+    var patchResult = diffMatchPatch.patch_apply(patches, serverText)
     if (!patchResult[1]
         .cl_some(function (changeApplied) {
           return !changeApplied
         })) {
-      return [unhashArray(patchResult[0], valueArray).join('\n'), []]
+      return [patchResult[0], []]
     }
+
+    var mergeHash = hashText(patchResult[0], valueHash, valueArray)
+    var newHash = hashText(newText, valueHash, valueArray)
     var conflicts = []
     var conflict = {}
     var lastType
     var resultHash = ''
-    diffs = diffMatchPatchStrict.diff_main(patchResult[0], newHash)
+    diffs = diffMatchPatchStrict.diff_main(mergeHash, newHash)
     diffs.cl_each(function (diff) {
       var diffType = diff[0]
       var diffText = diff[1]
@@ -307,20 +340,20 @@
       lastType = diffType
     })
     conflict.offset3 && conflicts.push(conflict)
-    var resultLines = unhashArray(resultHash, valueArray)
-    var resultStr = resultLines.join('\n')
+    var resultWords = unhashArray(resultHash, valueArray)
+    var resultStr = resultWords.join('')
     var lastOffset = 0
-    var resultLineOffsets = resultLines.cl_map(function (resultLine) {
+    var resultWordOffsets = resultWords.cl_map(function (resultWord) {
       var result = lastOffset
-      lastOffset += resultLine.length + 1
+      lastOffset += resultWord.length
       return result
     })
     return [resultStr, conflicts.cl_map(function (conflict) {
       return {
         patches: [
-          offsetToPatch(resultStr, resultLineOffsets[conflict.offset1]),
-          offsetToPatch(resultStr, resultLineOffsets[conflict.offset2]),
-          offsetToPatch(resultStr, resultLineOffsets[conflict.offset3])
+          offsetToPatch(resultStr, resultWordOffsets[conflict.offset1]),
+          offsetToPatch(resultStr, resultWordOffsets[conflict.offset2]),
+          offsetToPatch(resultStr, resultWordOffsets[conflict.offset3])
         ]
       }
     })]
