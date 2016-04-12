@@ -6,7 +6,21 @@
     root.clDiffUtils = factory(root.diff_match_patch)
   }
 })(this, function (diff_match_patch) {
-  var clDiffUtils = {}
+  var clDiffUtils = {
+    offsetToPatch: offsetToPatch,
+    patchToOffset: patchToOffset,
+    serializeObject: serializeObject,
+    flattenContent: flattenContent,
+    makePatchableText: makePatchableText,
+    makeContentChange: makeContentChange,
+    applyContentChanges: applyContentChanges,
+    getTextPatches: getTextPatches,
+    getObjectPatches: getObjectPatches,
+    quickPatch: quickPatch,
+    mergeObjects: mergeObjects,
+    mergeFlattenContent: mergeFlattenContent
+  }
+
   var marker = '\uF111\uF222\uF333\uF444'
   var DIFF_DELETE = -1
   var DIFF_INSERT = 1
@@ -64,111 +78,23 @@
     }, {})
   }
 
-  function flattenContent (content, doChars) {
-    return ({}).cl_extend(content).cl_extend({
-      text: content.text.cl_map(function (item) {
-        return item[1]
-      }).join(''),
-      chars: doChars && content.text
-          .cl_reduce(function (chars, item) {
-            return chars.concat(item[1].split('').cl_map(function (c) {
-              return [item[0], c]
-            }))
-          }, []),
-      properties: flattenObject(content.properties),
-      discussions: flattenObject(content.discussions),
-      comments: flattenObject(content.comments),
-      conflicts: flattenObject(content.conflicts)
-    })
-  }
-
-  function applyFlattenedObjectPatches (obj, patches) {
-    patches && patches.cl_each(function (patch) {
-      if (patch.a) {
-        obj[patch.k] = patch.a
-      } else if (patch.d) {
-        delete obj[patch.k]
+  function flattenContent (content) {
+    var result = ({}).cl_extend(content)
+    result.properties = flattenObject(content.properties)
+    result.discussions = flattenObject(content.discussions)
+    result.comments = flattenObject(content.comments)
+    result.text = content.text.cl_reduce(function (text, item) {
+      switch (item.type) {
+        case 'discussion':
+          if (result.discussions[item.id]) {
+            result.discussions[item.id][item.name] = text.length
+          }
+          return text
+        default:
+          return text + item[1]
       }
-    })
-  }
-
-  function applyFlattenedObjectPatchesReverse (obj, patches) {
-    patches && patches.slice().reverse().cl_each(function (patch) {
-      if (patch.d) {
-        obj[patch.k] = patch.d
-      } else if (patch.a) {
-        delete obj[patch.k]
-      }
-    })
-  }
-
-  function applyFlattenedTextPatches (text, patches) {
-    return (patches || []).cl_reduce(function (text, patch) {
-      if (patch.a) {
-        return text.slice(0, patch.o).concat(patch.a).concat(text.slice(patch.o))
-      } else if (patch.d) {
-        return text.slice(0, patch.o).concat(text.slice(patch.o + patch.d.length))
-      } else {
-        return text
-      }
-    }, text)
-  }
-
-  function applyFlattenedTextPatchesReverse (text, patches) {
-    return (patches || []).slice().reverse().cl_reduce(function (text, patch) {
-      if (patch.d) {
-        return text.slice(0, patch.o).concat(patch.d).concat(text.slice(patch.o))
-      } else if (patch.a) {
-        return text.slice(0, patch.o).concat(text.slice(patch.o + patch.a.length))
-      } else {
-        return text
-      }
-    }, text)
-  }
-
-  function applyCharPatches (chars, patches, userId) {
-    return (patches || []).cl_reduce(function (chars, patch) {
-      if (patch.a) {
-        return chars.slice(0, patch.o).concat(patch.a.split('').cl_map(function (c) {
-          return [userId, c]
-        })).concat(chars.slice(patch.o))
-      } else if (patch.d) {
-        return chars.slice(0, patch.o).concat(chars.slice(patch.o + patch.d.length))
-      } else {
-        return chars
-      }
-    }, chars)
-  }
-
-  function applyFlattenedContentChanges (content, contentChanges, doChars) {
-    var userId
-    var properties = ({}).cl_extend(content.properties)
-    var discussions = ({}).cl_extend(content.discussions)
-    var comments = ({}).cl_extend(content.comments)
-    var conflicts = ({}).cl_extend(content.conflicts)
-    var text = content.text
-    var chars = doChars && content.chars.slice()
-    contentChanges = contentChanges || []
-    contentChanges.cl_each(function (contentChange) {
-      applyFlattenedObjectPatches(properties, contentChange.properties)
-      applyFlattenedObjectPatches(discussions, contentChange.discussions)
-      applyFlattenedObjectPatches(comments, contentChange.comments)
-      applyFlattenedObjectPatches(conflicts, contentChange.conflicts)
-      text = applyFlattenedTextPatches(text, contentChange.text)
-      if (doChars) {
-        userId = contentChange.userId || userId
-        chars = applyCharPatches(chars, contentChange.text, userId)
-      }
-    })
-    return {
-      chars: chars,
-      text: text,
-      properties: properties,
-      discussions: discussions,
-      comments: comments,
-      conflicts: conflicts,
-      rev: content.rev + contentChanges.length
-    }
+    }, '')
+    return result
   }
 
   function getTextPatches (oldText, newText) {
@@ -226,6 +152,186 @@
     return patches.length ? patches : undefined
   }
 
+  function makePatchableText (content, markerKeys, markerIdxMap) {
+    var markers = []
+    content.discussions.cl_each(function (discussion, discussionId) {
+      function addMarker (offsetName) {
+        var markerKey = discussionId + offsetName
+        if (discussion[offsetName] !== undefined) {
+          var idx = markerIdxMap[markerKey]
+          if (idx === undefined) {
+            idx = markerKeys.length
+            markerIdxMap[markerKey] = idx
+            markerKeys.push({
+              id: discussionId,
+              offsetName: offsetName
+            })
+          }
+          markers.push({
+            idx: idx,
+            offset: discussion[offsetName]
+          })
+        }
+      }
+      addMarker('offset0')
+      addMarker('offset1')
+    })
+    var lastOffset = 0
+    var result = ''
+    markers
+      .sort(function (marker1, marker2) {
+        return marker1.offset - marker2.offset
+      })
+      .cl_each(function (marker) {
+        result +=
+          content.text.slice(lastOffset, marker.offset) +
+          String.fromCharCode(0xe000 + marker.idx) // Use a character from the private use area
+        lastOffset = marker.offset
+      })
+    return result + content.text.slice(lastOffset)
+  }
+
+  function stripDiscussionOffsets (objectMap) {
+    return objectMap.cl_reduce(function (result, object, id) {
+      result[id] = {
+        text: object.text
+      }
+      return result
+    }, {})
+  }
+
+  function restoreDiscussionOffsets (content, markerKeys) {
+    var len = content.text.length
+    var maxIdx = markerKeys.length
+    for (var i = 0; i < len; i++) {
+      var idx = content.text.charCodeAt(i) - 0xe000
+      if (idx >= 0 && idx < maxIdx) {
+        var markerKey = markerKeys[idx]
+        content.text = content.text.slice(0, i) + content.text.slice(i + 1)
+        var discussion = content.discussions[markerKey.id]
+        if (discussion) {
+          discussion[markerKey.offsetName] = i
+        }
+        i-- // We just removed the current character, we may have multiple markers with same offset
+      }
+    }
+  }
+
+  function makeContentChange (oldContent, newContent) {
+    var markerKeys = []
+    var markerIdxMap = Object.create(null)
+    var oldText = makePatchableText(oldContent, markerKeys, markerIdxMap)
+    var newText = makePatchableText(newContent, markerKeys, markerIdxMap)
+    var textPatches = getTextPatches(oldText, newText)
+    textPatches && textPatches.cl_each(function (patch) {
+      // If markers are present, replace changeText with an array containing text and markers
+      var changeText = patch.a || patch.d
+      var textItems = []
+      var lastItem = ''
+      var len = changeText.length
+      var maxIdx = markerKeys.length
+      for (var i = 0; i < len; i++) {
+        var idx = changeText.charCodeAt(i) - 0xe000
+        if (idx >= 0 && idx < maxIdx) {
+          var markerKey = markerKeys[idx]
+          lastItem.length && textItems.push(lastItem)
+          textItems.push({
+            type: 'discussion',
+            name: markerKey.offsetName,
+            id: markerKey.id
+          })
+          lastItem = ''
+        } else {
+          lastItem += changeText[i]
+        }
+      }
+      if (textItems.length) {
+        lastItem.length && textItems.push(lastItem)
+        if (patch.a) {
+          patch.a = textItems
+        } else {
+          patch.d = textItems
+        }
+      }
+    })
+    var propertiesPatches = getObjectPatches(oldContent.properties, newContent.properties)
+    var discussionsPatches = getObjectPatches(
+      stripDiscussionOffsets(oldContent.discussions),
+      stripDiscussionOffsets(newContent.discussions)
+    )
+    var commentsPatches = getObjectPatches(oldContent.comments, newContent.comments)
+    if (textPatches || propertiesPatches || discussionsPatches || commentsPatches) {
+      return {
+        text: textPatches,
+        properties: propertiesPatches,
+        discussions: discussionsPatches,
+        comments: commentsPatches
+      }
+    }
+  }
+
+  function applyContentChanges (content, contentChanges, isBackward) {
+    function applyObjectPatches (obj, patches) {
+      if (patches) {
+        patches.cl_each(function (patch) {
+          if (!patch.a ^ !isBackward) {
+            obj[patch.k] = patch.a || patch.d
+          } else {
+            delete obj[patch.k]
+          }
+        })
+      }
+    }
+
+    var markerKeys = []
+    var markerIdxMap = Object.create(null)
+    var result = {
+      text: makePatchableText(content, markerKeys, markerIdxMap),
+      properties: ({}).cl_extend(content.properties),
+      discussions: ({}).cl_extend(content.discussions),
+      comments: ({}).cl_extend(content.comments)
+    }
+
+    contentChanges.cl_each(function (contentChange) {
+      var textPatches = contentChange.text || []
+      if (isBackward) {
+        textPatches = textPatches.slice().reverse()
+      }
+      result.text = textPatches.cl_reduce(function (text, patch) {
+        var isAdd = !patch.a ^ !isBackward
+        var textChange = patch.a || patch.d || ''
+        if (textChange.type) {
+          // textChange is a marker
+          var markerKey = textChange.id + textChange.name
+          var idx = markerIdxMap[markerKey]
+          if (idx === undefined) {
+            idx = markerKeys.length
+            markerIdxMap[markerKey] = idx
+            markerKeys.push({
+              id: textChange.id,
+              offsetName: textChange.name
+            })
+          }
+          textChange = String.fromCharCode(0xe000 + idx)
+        }
+        if (isAdd) {
+          return text.slice(0, patch.o).concat(textChange).concat(text.slice(patch.o))
+        } else if (patch.d) {
+          return text.slice(0, patch.o).concat(text.slice(patch.o + textChange.length))
+        } else {
+          return text
+        }
+      }, result.text)
+
+      applyObjectPatches(result.properties, contentChange.properties)
+      applyObjectPatches(result.discussions, contentChange.discussions)
+      applyObjectPatches(result.comments, contentChange.comments)
+    })
+
+    restoreDiscussionOffsets(result, markerKeys)
+    return result
+  }
+
   function serializeObject (obj) {
     return JSON.stringify(obj, function (key, value) {
       return Object.prototype.toString.call(value) === '[object Object]'
@@ -258,47 +364,7 @@
     }), valueHash, valueArray)
   }
 
-  function hashText (text, valueHash, valueArray) {
-    var hash = []
-    var startIndex = 0
-    function addWord (endIndex) {
-      var word = text.slice(startIndex, endIndex)
-      var wordHash = valueHash[word]
-      if (wordHash === undefined) {
-        wordHash = valueArray.length
-        valueArray.push(word)
-        valueHash[word] = wordHash
-      }
-      hash.push(wordHash)
-    }
-
-    var lastCharSpace
-    var textLen = text.length
-    for (var i = 0; i < textLen; i++) {
-      var charCode = text.charCodeAt(i)
-      if (charCode === 0x20 /* space */ || charCode === 0x09 /* \t */ || charCode === 0x0a /* \n */) {
-        lastCharSpace = true
-      } else if (lastCharSpace) {
-        addWord(i)
-        startIndex = i
-        lastCharSpace = false
-      }
-    }
-    if (i > 0) {
-      addWord(i)
-    }
-    return String.fromCharCode.apply(null, hash)
-  }
-
-  function unhashArray (hash, valueArray) {
-    return hash.split('').cl_map(function (objHash) {
-      return valueArray[objHash.charCodeAt(0)]
-    })
-  }
-
   function mergeText (oldText, newText, serverText) {
-    var valueHash = Object.create(null)
-    var valueArray = []
     var diffs = diffMatchPatch.diff_main(oldText, newText)
     diffMatchPatch.diff_cleanupSemantic(diffs)
     var patches = diffMatchPatch.patch_make(oldText, diffs)
@@ -307,56 +373,14 @@
         .cl_some(function (changeApplied) {
           return !changeApplied
         })) {
-      return [patchResult[0], []]
+      return patchResult[0]
     }
 
-    var mergeHash = hashText(patchResult[0], valueHash, valueArray)
-    var newHash = hashText(newText, valueHash, valueArray)
-    var conflicts = []
-    var conflict = {}
-    var lastType
-    var resultHash = ''
-    diffs = diffMatchPatchStrict.diff_main(mergeHash, newHash)
-    diffs.cl_each(function (diff) {
-      var diffType = diff[0]
-      var diffText = diff[1]
-      resultHash += diffText
-      if (diffType !== lastType) {
-        if (conflict.offset3) {
-          conflicts.push(conflict)
-          conflict = {}
-        }
-        if (conflict.offset2) {
-          if (diffType === DIFF_EQUAL) {
-            conflict = {}
-          } else {
-            conflict.offset3 = resultHash.length
-          }
-        } else if (diffType !== DIFF_EQUAL) {
-          conflict.offset1 = resultHash.length - diffText.length
-          conflict.offset2 = resultHash.length
-        }
-      }
-      lastType = diffType
-    })
-    conflict.offset3 && conflicts.push(conflict)
-    var resultWords = unhashArray(resultHash, valueArray)
-    var resultStr = resultWords.join('')
-    var lastOffset = 0
-    var resultWordOffsets = resultWords.cl_map(function (resultWord) {
-      var result = lastOffset
-      lastOffset += resultWord.length
-      return result
-    })
-    return [resultStr, conflicts.cl_map(function (conflict) {
-      return {
-        patches: [
-          offsetToPatch(resultStr, resultWordOffsets[conflict.offset1]),
-          offsetToPatch(resultStr, resultWordOffsets[conflict.offset2]),
-          offsetToPatch(resultStr, resultWordOffsets[conflict.offset3])
-        ]
-      }
-    })]
+    diffs = diffMatchPatchStrict.diff_main(patchResult[0], newText)
+    diffMatchPatch.diff_cleanupSemantic(diffs)
+    return diffs.cl_map(function (diff) {
+      return diff[1]
+    }).join('')
   }
 
   function quickPatch (oldStr, newStr, destStr, strict) {
@@ -403,43 +427,38 @@
     return mergedObject
   }
 
-  function mergeContent (oldContent, newContent, serverContent) {
-    var oldText = oldContent.text
-    var serverText = serverContent.text
-    var localText = newContent.text
+  function mergeFlattenContent (oldContent, newContent, serverContent) {
+    var markerKeys = []
+    var markerIdxMap = Object.create(null)
+    var oldText = makePatchableText(oldContent, markerKeys, markerIdxMap)
+    var serverText = makePatchableText(serverContent, markerKeys, markerIdxMap)
+    var localText = makePatchableText(newContent, markerKeys, markerIdxMap)
     var isServerTextChanges = oldText !== serverText
-    var isLocalTextChanges = oldText !== localText
     var isTextSynchronized = serverText === localText
-    var conflicts = []
-    if (!isTextSynchronized && isServerTextChanges && isLocalTextChanges) {
-      var textWithConflicts = mergeText(oldText, serverText, localText)
-      newContent.text = textWithConflicts[0]
-      conflicts = textWithConflicts[1]
-    } else if (!isTextSynchronized && isServerTextChanges) {
-      newContent.text = serverText
-    }
 
-    newContent.properties = mergeObjects(oldContent.properties, newContent.properties, serverContent.properties)
-    newContent.discussions = mergeObjects(oldContent.discussions, newContent.discussions, serverContent.discussions)
-    newContent.comments = mergeObjects(oldContent.comments, newContent.comments, serverContent.comments)
-    newContent.conflicts = mergeObjects(oldContent.conflicts, newContent.conflicts, serverContent.conflicts)
-    return conflicts
+    var result = {
+      text: isTextSynchronized || !isServerTextChanges
+        ? localText
+        : mergeText(oldText, serverText, localText),
+      properties: mergeObjects(
+        oldContent.properties,
+        newContent.properties,
+        serverContent.properties
+      ),
+      discussions: mergeObjects(
+        stripDiscussionOffsets(oldContent.discussions),
+        stripDiscussionOffsets(newContent.discussions),
+        stripDiscussionOffsets(serverContent.discussions)
+      ),
+      comments: mergeObjects(
+        oldContent.comments,
+        newContent.comments,
+        serverContent.comments
+      )
+    }
+    restoreDiscussionOffsets(result, markerKeys)
+    return result
   }
 
-  clDiffUtils.offsetToPatch = offsetToPatch
-  clDiffUtils.patchToOffset = patchToOffset
-  clDiffUtils.serializeObject = serializeObject
-  clDiffUtils.flattenContent = flattenContent
-  clDiffUtils.applyFlattenedObjectPatches = applyFlattenedObjectPatches
-  clDiffUtils.applyFlattenedObjectPatchesReverse = applyFlattenedObjectPatchesReverse
-  clDiffUtils.applyFlattenedTextPatches = applyFlattenedTextPatches
-  clDiffUtils.applyFlattenedTextPatchesReverse = applyFlattenedTextPatchesReverse
-  clDiffUtils.applyCharPatches = applyCharPatches
-  clDiffUtils.applyFlattenedContentChanges = applyFlattenedContentChanges
-  clDiffUtils.getTextPatches = getTextPatches
-  clDiffUtils.getObjectPatches = getObjectPatches
-  clDiffUtils.quickPatch = quickPatch
-  clDiffUtils.mergeObjects = mergeObjects
-  clDiffUtils.mergeContent = mergeContent
   return clDiffUtils
 })
