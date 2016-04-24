@@ -12,6 +12,7 @@
     serializeObject: serializeObject,
     flattenContent: flattenContent,
     makePatchableText: makePatchableText,
+    restoreDiscussionOffsets: restoreDiscussionOffsets,
     makeContentChange: makeContentChange,
     applyContentChanges: applyContentChanges,
     getTextPatches: getTextPatches,
@@ -154,7 +155,9 @@
 
   function makePatchableText (content, markerKeys, markerIdxMap) {
     var markers = []
-    content.discussions.cl_each(function (discussion, discussionId) {
+    // Sort keys to have predictable marker positions, in case of same offset
+    var discussionKeys = Object.keys(content.discussions).sort()
+    discussionKeys.cl_each(function (discussionId) {
       function addMarker (offsetName) {
         var markerKey = discussionId + offsetName
         if (discussion[offsetName] !== undefined) {
@@ -173,9 +176,17 @@
           })
         }
       }
-      addMarker('offset0')
-      addMarker('offset1')
+
+      var discussion = content.discussions[discussionId]
+      if (discussion.offset0 === discussion.offset1) {
+        // Remove discussion offsets if markers are at the same position
+        discussion.offset0 = discussion.offset1 = undefined
+      } else {
+        addMarker('offset0')
+        addMarker('offset1')
+      }
     })
+
     var lastOffset = 0
     var result = ''
     markers
@@ -224,7 +235,7 @@
     var newText = makePatchableText(newContent, markerKeys, markerIdxMap)
     var textPatches = getTextPatches(oldText, newText)
     textPatches && textPatches.cl_each(function (patch) {
-      // If markers are present, replace changeText with an array containing text and markers
+      // If markers are present, replace changeText with an array of text and markers
       var changeText = patch.a || patch.d
       var textItems = []
       var lastItem = ''
@@ -288,7 +299,7 @@
     var result = {
       text: makePatchableText(content, markerKeys, markerIdxMap),
       properties: ({}).cl_extend(content.properties),
-      discussions: ({}).cl_extend(content.discussions),
+      discussions: stripDiscussionOffsets(content.discussions),
       comments: ({}).cl_extend(content.comments)
     }
 
@@ -299,8 +310,16 @@
       }
       result.text = textPatches.cl_reduce(function (text, patch) {
         var isAdd = !patch.a ^ !isBackward
-        var textChange = patch.a || patch.d || ''
-        if (textChange.type) {
+        var textChanges = patch.a || patch.d || ''
+        // When no marker is present, textChanges is a string
+        if (typeof textChanges === 'string') {
+          textChanges = [textChanges]
+        }
+        var textChange = textChanges.cl_map(function (textChange) {
+          if (!textChange.type) {
+            // textChange is a string
+            return textChange
+          }
           // textChange is a marker
           var markerKey = textChange.id + textChange.name
           var idx = markerIdxMap[markerKey]
@@ -312,8 +331,8 @@
               offsetName: textChange.name
             })
           }
-          textChange = String.fromCharCode(0xe000 + idx)
-        }
+          return String.fromCharCode(0xe000 + idx)
+        }).join('')
         if (isAdd) {
           return text.slice(0, patch.o).concat(textChange).concat(text.slice(patch.o))
         } else if (patch.d) {
