@@ -7,6 +7,7 @@
   }
 })(this, function (diff_match_patch) {
   var clDiffUtils = {
+    cloneObject: cloneObject,
     offsetToPatch: offsetToPatch,
     patchToOffset: patchToOffset,
     serializeObject: serializeObject,
@@ -32,6 +33,10 @@
   diffMatchPatchStrict.Patch_DeleteThreshold = 0
   var diffMatchPatchPermissive = new diff_match_patch() // eslint-disable-line new-cap
   diffMatchPatchPermissive.Match_Distance = 999999999
+
+  function cloneObject (obj) {
+    return JSON.parse(JSON.stringify(obj))
+  }
 
   function offsetToPatch (text, offset) {
     var patch = diffMatchPatchPermissive.patch_make(text, [
@@ -298,9 +303,9 @@
     var markerIdxMap = Object.create(null)
     var result = {
       text: makePatchableText(content, markerKeys, markerIdxMap),
-      properties: ({}).cl_extend(content.properties),
+      properties: cloneObject(content.properties),
       discussions: stripDiscussionOffsets(content.discussions),
-      comments: ({}).cl_extend(content.comments)
+      comments: cloneObject(content.comments)
     }
 
     contentChanges.cl_each(function (contentChange) {
@@ -443,7 +448,7 @@
       }
     // Take the server value otherwise
     })
-    return mergedObject
+    return cloneObject(mergedObject)
   }
 
   function mergeFlattenContent (oldContent, newContent, serverContent) {
