@@ -5,7 +5,7 @@
   } else {
     root.clDiffUtils = factory(root.diff_match_patch)
   }
-})(this, function (diff_match_patch) {
+})(this, function (DiffMatchPatch) {
   var clDiffUtils = {
     cloneObject: cloneObject,
     offsetToPatch: offsetToPatch,
@@ -27,11 +27,11 @@
   var DIFF_DELETE = -1
   var DIFF_INSERT = 1
   var DIFF_EQUAL = 0
-  var diffMatchPatch = new diff_match_patch() // eslint-disable-line new-cap
-  var diffMatchPatchStrict = new diff_match_patch() // eslint-disable-line new-cap
+  var diffMatchPatch = new DiffMatchPatch() // eslint-disable-line new-cap
+  var diffMatchPatchStrict = new DiffMatchPatch() // eslint-disable-line new-cap
   diffMatchPatchStrict.Match_Threshold = 0
   diffMatchPatchStrict.Patch_DeleteThreshold = 0
-  var diffMatchPatchPermissive = new diff_match_patch() // eslint-disable-line new-cap
+  var diffMatchPatchPermissive = new DiffMatchPatch() // eslint-disable-line new-cap
   diffMatchPatchPermissive.Match_Distance = 999999999
 
   function cloneObject (obj) {
@@ -338,12 +338,12 @@
           }
           return String.fromCharCode(0xe000 + idx)
         }).join('')
-        if (isAdd) {
-          return text.slice(0, patch.o).concat(textChange).concat(text.slice(patch.o))
-        } else if (patch.d) {
-          return text.slice(0, patch.o).concat(text.slice(patch.o + textChange.length))
-        } else {
+        if (!textChange) {
           return text
+        } else if (isAdd) {
+          return text.slice(0, patch.o).concat(textChange).concat(text.slice(patch.o))
+        } else {
+          return text.slice(0, patch.o).concat(text.slice(patch.o + textChange.length))
         }
       }, result.text)
 
